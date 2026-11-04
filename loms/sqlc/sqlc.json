@@ -1,0 +1,15 @@
+{
+  "version": "2",
+  "sql": [{
+    "engine": "postgresql",
+    "schema": "../migrations",
+    "gen": {
+      "go": {
+        "package": "db_repository",
+        "out": "../internal/pkg/loms/repository/db_repository",
+        "sql_package": "pgx/v5"
+      }
+    },
+    "queries": "../internal/pkg/loms/repository/db_repository"
+  }]
+}

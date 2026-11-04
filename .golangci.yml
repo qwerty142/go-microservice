@@ -1,0 +1,162 @@
+# More info on config here: https://golangci-lint.run/usage/configuration/#config-file
+run:
+  concurrency: 8
+  timeout: 10m
+  issues-exit-code: 1
+  tests: true
+
+output:
+  formats:
+    - format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+
+linters-settings:
+  govet:
+    enable:
+      - shadow
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - style
+      - performance
+      - experimental
+      - opinionated
+  wrapcheck:
+    ignoreSigs:
+      - .Errorf(
+      - errors.New(
+      - errors.Unwrap(
+      - status.Error(
+      - status.Errorf(
+
+  # Rules here are enabled by one instead of enableAllRules,
+  # since it is easier to find which linters are used
+  revive:
+    ignore-generated-header: true
+    confidence: 0
+    rules:
+      - name: add-constant
+        arguments:
+          [{ "allowInts": "0,1,2,3", "allowFloats": "0.0,0.,1.0,1.,2.0,2." }]
+      - name: argument-limit
+        arguments: [6]
+      - name: atomic
+      - name: bare-return
+      - name: blank-imports
+      - name: bool-literal-in-expr
+      - name: call-to-gc
+      - name: confusing-naming
+      - name: comment-spacings
+        arguments: ["nolint"]
+      - name: confusing-results
+      - name: cognitive-complexity
+        arguments: [12]
+      - name: constant-logical-expr
+      - name: context-as-argument
+        arguments: [{ "allowTypesBefore": "*testing.T" }]
+      - name: context-keys-type
+      - name: cyclomatic
+        arguments: [10]
+      - name: datarace
+      - name: deep-exit
+      - name: defer
+      - name: dot-imports
+      - name: duplicated-imports
+      - name: early-return
+      - name: empty-block
+      - name: empty-lines
+      - name: error-naming
+      - name: error-return
+      - name: error-strings
+      - name: errorf
+      - name: exported
+      - name: flag-parameter
+      - name: function-result-limit
+        arguments: [5]
+      - name: get-return
+      - name: identical-branches
+      - name: if-return
+      - name: increment-decrement
+      - name: indent-error-flow
+      - name: import-shadowing
+      - name: modifies-value-receiver
+      - name: nested-structs
+      - name: optimize-operands-order
+      - name: range
+      - name: range-val-in-closure
+      - name: range-val-address
+      - name: receiver-naming
+      - name: redefines-builtin-id
+      - name: string-of-int
+      - name: struct-tag
+      - name: superfluous-else
+      - name: time-equal
+      - name: time-naming
+      - name: var-naming
+      - name: var-declaration
+      - name: unconditional-recursion
+      - name: unexported-naming
+      - name: unexported-return
+      - name: unhandled-error
+      - name: unnecessary-stmt
+      - name: unreachable-code
+      - name: unused-parameter
+      - name: unused-receiver
+      - name: use-any
+      - name: useless-break
+      - name: waitgroup-by-value
+
+linters:
+  disable-all: true
+  enable:
+    - gocritic
+    - godot
+    - gofumpt
+    - gosec
+    - gosimple
+    - govet
+    - ineffassign
+    - nilnil
+    - paralleltest
+    - prealloc
+    - reassign
+    - revive
+    - staticcheck
+    - tenv
+    - thelper
+    - tparallel
+    - typecheck
+    - unused
+    - whitespace
+    - wrapcheck
+
+issues:
+  exclude-use-default: false
+  exclude:
+    # Allow string constants
+    - "add-constant: string literal"
+  exclude-rules:
+    # Disable these revive checks for tests
+    - path: _test\.go
+      linters:
+        - revive
+      text: "(add-constant|cognitive|cyclic)"
+    # Embedded empty struct{} is allowed
+    - linters:
+        - revive
+      text: "nested-structs"
+      source: "struct{}"
+    # gosec shouldn't check test code
+    - path: _test\.go
+      linters:
+        - gosec
+  exclude-files:
+    - \.pb\.go$
+    - \.pb\.gw\.go$
+  exclude-dirs:
+    - bin
+    - vendor
+    - var
+    - tmp
+    - .cache

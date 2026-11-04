@@ -1,0 +1,36 @@
+default:
+  image: golang:1.22
+
+stages:
+  - test
+  - build
+
+unit-test:
+  stage: test
+  script:
+    - make unit-test
+
+# e2e-test:
+#   stage: test
+#   image: golang:1.22-bookworm
+#   script:
+#     - apt update
+#     - apt install -y docker-compose
+#     - make run-all
+#     - make e2e-test
+#     - docker-compose down
+
+lint-code:
+  image: golangci/golangci-lint:v1.59.0
+  stage: test
+  script:
+    - make lint
+  allow_failure: true
+
+build:
+  stage: build
+  script:
+    - make build-all
+  artifacts:
+    paths:
+      - ./build/*/*

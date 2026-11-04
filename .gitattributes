@@ -1,2 +1,8 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+**/mocks/** -diff
+**/*mock_test.go -diff -text
+*.pb.go -diff
+*.pb.validate.go -diff
+*.swagger.json -diff
+*pb.gw.go -diff
+go.sum -diff
+swagger.go -diff

@@ -1,0 +1,17 @@
+[
+  {
+    "sku_id": 1,
+    "total_count": 100,
+    "reserved": 20
+  },
+  {
+    "sku_id": 2,
+    "total_count": 50,
+    "reserved": 5
+  },
+  {
+    "sku_id": 1076963,
+    "total_count": 999999,
+    "reserved": 0
+  }
+]

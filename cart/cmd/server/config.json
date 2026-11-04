@@ -1,0 +1,20 @@
+{
+  "server": {
+    "http_url": ":8082",
+    "jaeger_url": "http://jaeger:4318"
+  },
+
+  "loms_service": {
+    "grpc_url": "loms:50051"
+  },
+
+  "product_service": {
+    "token": "testtoken",
+    "retry": {
+      "max_count": 3,
+      "delay_seconds": 1,
+      "on_statuses": [420, 429]
+    },
+    "rps": 10
+  }
+}
