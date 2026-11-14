@@ -2,13 +2,14 @@ package server
 
 import (
 	"encoding/json"
-	"io"
+	"errors"
 	"net/http"
 	"time"
 
 	"github.com/guiferpa/gody/v2"
 	"go.opentelemetry.io/otel"
 	"route256/cart/internal/pkg/carts/model"
+	"route256/cart/internal/pkg/carts/service"
 	"route256/cart/internal/pkg/metrics"
 	"route256/cart/internal/pkg/middleware"
 	"route256/cart/internal/pkg/util/logger"
@@ -36,20 +37,13 @@ func (s *CartServer) GetCart(writerOrigin http.ResponseWriter, request *http.Req
 
 	writer.Header().Set("Content-Type", "application/json")
 
-	var parseErr error = nil
+	var parseErr error
 	requestData := &getCartRequest{}
 
-	requestData.UserID, parseErr = parseInt64(request.PathValue("user_id"))
-	if parseErr != nil {
-		setInternalServerError(writer, "Parse query error")
+	if requestData.UserID, parseErr = parseInt64(request.PathValue("user_id")); parseErr != nil {
+		setBadRequestError(ctx, writer, "Parse query error")
 		return
 	}
-
-	defer func(body io.ReadCloser) {
-		if closeErr := body.Close(); closeErr != nil {
-			logger.Errorw(ctx, "Error closing response body", "error", closeErr)
-		}
-	}(request.Body)
 
 	// Validation
 	if valid, err := gody.DefaultValidate(*requestData, nil); err != nil || !valid {
@@ -59,22 +53,26 @@ func (s *CartServer) GetCart(writerOrigin http.ResponseWriter, request *http.Req
 
 	cart, serviceErr := s.cartService.GetUserCart(ctx, requestData.UserID)
 	if serviceErr != nil {
-		setInternalServerError(writer, "Service error")
+		if errors.Is(serviceErr, service.ErrCartNotFound) {
+			writer.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		setInternalServerError(ctx, writer, "Service error")
 		return
 	}
 
-	if cart == nil || cart.Items == nil || len(cart.Items) == 0 {
+	if len(cart.Items) == 0 {
 		writer.WriteHeader(http.StatusNotFound)
 		return
 	}
 
-	response := getCartResponse{}
-	response.Items = cart.Items
-	response.TotalPrice = cart.TotalPrice
-
-	buf, err := json.Marshal(&response)
+	buf, err := json.Marshal(&getCartResponse{
+		Items:      cart.Items,
+		TotalPrice: cart.TotalPrice,
+	})
 	if err != nil {
-		setInternalServerError(writer, "Json marshal error")
+		setInternalServerError(ctx, writer, "Json marshal error")
 		return
 	}
 

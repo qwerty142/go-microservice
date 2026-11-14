@@ -9,8 +9,9 @@ type ProducerConfig struct {
 }
 
 type Config struct {
-	kafka    kafka.Config
-	producer ProducerConfig
+	kafka     kafka.Config
+	producer  ProducerConfig
+	jaegerURL string
 }
 
 func GetConfig(f flags) Config {
@@ -23,5 +24,6 @@ func GetConfig(f flags) Config {
 		producer: ProducerConfig{
 			TopicName: f.topic,
 		},
+		jaegerURL: f.jaegerURL,
 	}
 }

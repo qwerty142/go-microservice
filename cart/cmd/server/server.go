@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"os/signal"
@@ -34,15 +35,16 @@ var configJsonFile embed.FS
 
 type Config struct {
 	ServerConfig struct {
-		HttpUrl   string `json:"http_url"`
-		JaegerUrl string `json:"jaeger_url"`
+		HTTPURL   string `json:"http_url"`
+		JaegerURL string `json:"jaeger_url"`
 	} `json:"server"`
 
 	LomsServiceConfig struct {
-		GrpcUrl string `json:"grpc_url"`
+		GrpcURL string `json:"grpc_url"`
 	} `json:"loms_service"`
 
 	ProductServiceConfig struct {
+		URL   string `json:"url"`
 		Token string `json:"token"`
 		Retry struct {
 			MaxCount     int   `json:"max_count"`
@@ -71,7 +73,7 @@ func main() {
 		logger.Fatalw(ctx, "parsing config file", "error", err.Error())
 	}
 
-	exporter, err := otlptracehttp.New(ctx, otlptracehttp.WithEndpointURL(config.ServerConfig.JaegerUrl))
+	exporter, err := otlptracehttp.New(ctx, otlptracehttp.WithEndpointURL(config.ServerConfig.JaegerURL))
 	if err != nil {
 		logger.Panicw(ctx, "otel exporter error", "error", err.Error())
 	}
@@ -100,6 +102,7 @@ func main() {
 
 	cartRepository := repository.NewInMemoryCartRepository()
 	productProvider := products.NewProductClientHTTP(
+		config.ProductServiceConfig.URL,
 		config.ProductServiceConfig.Token,
 		&http.Client{
 			Transport: middleware.NewRetryableTransport(
@@ -112,7 +115,7 @@ func main() {
 	)
 
 	conn, err := grpc.NewClient(
-		config.LomsServiceConfig.GrpcUrl,
+		config.LomsServiceConfig.GrpcURL,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 	)
@@ -126,7 +129,7 @@ func main() {
 		cartRepository,
 		productProvider,
 		lomsClient,
-		config.ProductServiceConfig.Rps,
+		service.WithProductRPS(config.ProductServiceConfig.Rps),
 	)
 	cartServer := server.NewCartServer(cartService)
 
@@ -135,29 +138,29 @@ func main() {
 	handler := middleware.NewLogger(mux)
 
 	httpServer := &http.Server{
-		Addr:              config.ServerConfig.HttpUrl,
+		Addr:              config.ServerConfig.HTTPURL,
 		ReadHeaderTimeout: 1 * time.Minute,
 		Handler:           handler,
 	}
 
-	logger.Infow(ctx, "Serving on %s\n", httpServer.Addr)
+	logger.Infow(ctx, "http server listening", "addr", httpServer.Addr)
 
 	go func() {
-		if err := httpServer.ListenAndServe(); err != nil {
+		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Fatalw(ctx, "http server error", "error", err.Error())
 		}
 	}()
 
-	sigChan := make(chan os.Signal)
+	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	sig := <-sigChan
-	logger.Infow(ctx, "Received signal \"%v\", shutting down...", sig)
+	logger.Infow(ctx, "received signal, shutting down", "signal", sig.String())
 
-	timeCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	if err := httpServer.Shutdown(timeCtx); err != nil {
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		logger.Panicw(ctx, "http server shutdown error", "error", err.Error())
 	}
 }

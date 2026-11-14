@@ -3,7 +3,6 @@ package middleware
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"slices"
@@ -40,19 +39,22 @@ func (rt *RetryableTransport) RoundTrip(req *http.Request) (*http.Response, erro
 	var bodyBytes []byte
 	if req.Body != nil {
 		bodyBytes, _ = io.ReadAll(req.Body)
-		req.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+		req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 	}
 
 	resp, err := rt.transport.RoundTrip(req)
 	for retries := 1; rt.shouldRetry(err, resp) && retries <= rt.maxRetries; retries++ {
-		logger.Infow(context.Background(), fmt.Sprintf("Retry, attempt %d", retries))
+		logger.Infow(req.Context(), "Retry request", "attempt", retries, "url", req.URL.String())
 
-		time.Sleep(rt.retryDelay)
+		if !waitForDelay(req.Context(), rt.retryDelay) {
+			drainBody(resp)
+			return nil, req.Context().Err()
+		}
 
 		drainBody(resp)
 
 		if req.Body != nil {
-			req.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+			req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 		}
 
 		resp, err = rt.transport.RoundTrip(req)
@@ -69,8 +71,21 @@ func (rt *RetryableTransport) shouldRetry(err error, resp *http.Response) bool {
 	return slices.Contains(rt.retryStatus, resp.StatusCode)
 }
 
+// waitForDelay waits for the given duration and reports whether the wait completed.
+func waitForDelay(ctx context.Context, d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
 func drainBody(resp *http.Response) {
-	if resp.Body != nil {
+	if resp != nil && resp.Body != nil {
 		_, _ = io.Copy(io.Discard, resp.Body)
 		_ = resp.Body.Close()
 	}

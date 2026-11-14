@@ -23,7 +23,10 @@ type Logger struct {
 	logger *otelzap.SugaredLogger
 }
 
-var global *Logger
+var (
+	global     *Logger
+	globalOnce sync.Once
+)
 
 func init() {
 	_, err := New()
@@ -37,17 +40,16 @@ func New() (*Logger, error) {
 	loggerConfig.Level.SetLevel(zapcore.DebugLevel)
 	loggerConfig.ErrorOutputPaths = []string{"stdout"}
 
-	logger, err := loggerConfig.Build()
+	l, err := loggerConfig.Build()
 	if err != nil {
 		return nil, fmt.Errorf("loggerConfig.Build: %w", err)
 	}
 
-	once := sync.Once{}
-	once.Do(func() {
-		global = &Logger{logger: otelzap.New(logger).Sugar().With("service", "cart")}
+	globalOnce.Do(func() {
+		global = &Logger{logger: otelzap.New(l).Sugar().With("service", "cart")}
 	})
 
-	return &Logger{logger: otelzap.New(logger).Sugar()}, nil
+	return &Logger{logger: otelzap.New(l).Sugar()}, nil
 }
 
 func ToContext(ctx context.Context, logger *Logger) context.Context {

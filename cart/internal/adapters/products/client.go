@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -14,15 +15,18 @@ import (
 	"route256/cart/internal/pkg/util/logger"
 )
 
+const getProductPath = "/get_product"
+
 // ProductClientHTTP http client to send requests.
 type ProductClientHTTP struct {
-	token  string
-	client *http.Client
+	baseURL string
+	token   string
+	client  *http.Client
 }
 
 // NewProductClientHTTP constructor for ProductClientHTTP.
-func NewProductClientHTTP(token string, client *http.Client) *ProductClientHTTP {
-	return &ProductClientHTTP{token, client}
+func NewProductClientHTTP(baseURL, token string, client *http.Client) *ProductClientHTTP {
+	return &ProductClientHTTP{baseURL: baseURL, token: token, client: client}
 }
 
 type getProductRequest struct {
@@ -40,39 +44,26 @@ type errorResponse struct {
 	Message string `json:"message"`
 }
 
-// GetProduct fetches service.ProductInfo from remote server.
+// GetProduct fetches model.ProductInfo from remote server.
 func (c *ProductClientHTTP) GetProduct(ctx context.Context, skuID int64) (model.ProductInfo, error) {
-	request := getProductRequest{Token: c.token, SKU: skuID}
-
-	requestBody, err := json.Marshal(request)
+	requestBody, err := json.Marshal(getProductRequest{Token: c.token, SKU: skuID})
 	if err != nil {
-		logger.Errorw(ctx, "Error marshaling JSON", "error", err)
+		return model.ProductInfo{}, fmt.Errorf("marshal get_product request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(
-		ctx,
-		"POST",
-		"http://route256.pavl.uk:8080/get_product",
-		bytes.NewBuffer(requestBody),
-	)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+getProductPath, bytes.NewReader(requestBody))
 	if err != nil {
-		logger.Errorw(ctx, "Error creating request", "error", err)
+		return model.ProductInfo{}, fmt.Errorf("create get_product request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
 
 	startTime := time.Now()
 	response, err := c.client.Do(req)
-	metrics.SaveExternalCallDuration(startTime, "/get_product", response.StatusCode)
-
 	if err != nil {
-		logger.Errorw(ctx, "Error sending request", "error", err)
+		return model.ProductInfo{}, fmt.Errorf("send get_product request: %w", err)
 	}
-
-	responseBody, err := io.ReadAll(response.Body)
-	if err != nil {
-		logger.Errorw(ctx, "Error reading response body", "error", err)
-	}
+	metrics.SaveExternalCallDuration(startTime, getProductPath, response.StatusCode)
 
 	defer func(body io.ReadCloser) {
 		if closeErr := body.Close(); closeErr != nil {
@@ -80,10 +71,15 @@ func (c *ProductClientHTTP) GetProduct(ctx context.Context, skuID int64) (model.
 		}
 	}(response.Body)
 
+	responseBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		return model.ProductInfo{}, fmt.Errorf("read get_product response body: %w", err)
+	}
+
 	if response.StatusCode == http.StatusOK {
 		productResp := productResponse{}
 		if err = json.Unmarshal(responseBody, &productResp); err != nil {
-			logger.Errorw(ctx, "Error unmarshaling response body", "error", err)
+			return model.ProductInfo{}, fmt.Errorf("unmarshal get_product response: %w", err)
 		}
 
 		return model.ProductInfo{Name: productResp.Name, Price: productResp.Price}, nil
@@ -91,7 +87,7 @@ func (c *ProductClientHTTP) GetProduct(ctx context.Context, skuID int64) (model.
 
 	errorResp := errorResponse{}
 	if err = json.Unmarshal(responseBody, &errorResp); err != nil {
-		logger.Errorw(ctx, "Error unmarshaling response body", "error", err)
+		errorResp.Message = response.Status
 	}
 
 	return model.ProductInfo{}, &RequestError{StatusCode: response.StatusCode, Err: errors.New(errorResp.Message)}

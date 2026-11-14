@@ -14,11 +14,15 @@ import (
 	"route256/cart/pkg/api/loms/v1"
 )
 
-const httpUrl = "http://localhost:8082"
+const (
+	httpUrl           = "http://localhost:8082"
+	productServiceURL = "http://route256.pavl.uk:8080"
+)
 
 func initServer() *http.ServeMux {
 	cartRepository := repository.NewInMemoryCartRepository()
 	productProvider := products.NewProductClientHTTP(
+		productServiceURL,
 		"testtoken",
 		&http.Client{
 			Transport: middleware.NewRetryableTransport(http.DefaultTransport, 3, 1*time.Second, []int{420, 429}),

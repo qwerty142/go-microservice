@@ -9,6 +9,7 @@
   },
 
   "product_service": {
+    "url": "http://route256.pavl.uk:8080",
     "token": "testtoken",
     "retry": {
       "max_count": 3,

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"io"
 	"net/http"
 	"time"
 
@@ -29,20 +28,13 @@ func (s *CartServer) ClearCart(writerOrigin http.ResponseWriter, request *http.R
 
 	writer.Header().Set("Content-Type", "application/json")
 
-	var parseErr error = nil
+	var parseErr error
 	requestData := &clearCartRequest{}
 
-	requestData.UserID, parseErr = parseInt64(request.PathValue("user_id"))
-	if parseErr != nil {
-		setInternalServerError(writer, "Parse query error")
+	if requestData.UserID, parseErr = parseInt64(request.PathValue("user_id")); parseErr != nil {
+		setBadRequestError(ctx, writer, "Parse query error")
 		return
 	}
-
-	defer func(body io.ReadCloser) {
-		if closeErr := body.Close(); closeErr != nil {
-			logger.Errorw(ctx, "Error closing response body", "error", closeErr)
-		}
-	}(request.Body)
 
 	// Validation
 	if valid, err := gody.DefaultValidate(*requestData, nil); err != nil || !valid {
@@ -51,7 +43,7 @@ func (s *CartServer) ClearCart(writerOrigin http.ResponseWriter, request *http.R
 	}
 
 	if serviceErr := s.cartService.ClearUserCart(ctx, requestData.UserID); serviceErr != nil {
-		setInternalServerError(writer, "Service error")
+		setInternalServerError(ctx, writer, "Service error")
 		return
 	}
 

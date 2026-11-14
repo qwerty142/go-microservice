@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -13,6 +14,7 @@ import (
 	"route256/loms/pkg/api/loms/v1"
 )
 
+// OrderCreate handles order creation.
 func (server *LomsServer) OrderCreate(ctx context.Context, req *loms.OrderCreateRequest) (resp *loms.OrderCreateResponse, err error) {
 	defer func(startTime time.Time) {
 		metrics.SaveRequestDuration(startTime, "/order/create", err)
@@ -24,7 +26,12 @@ func (server *LomsServer) OrderCreate(ctx context.Context, req *loms.OrderCreate
 
 	id, err := server.impl.CreateOrder(ctx, repackCreateRequestToOrder(req))
 	if err != nil {
-		return nil, status.Errorf(codes.FailedPrecondition, err.Error())
+		switch {
+		case errors.Is(err, model.ErrInsufficientStocks), errors.Is(err, model.ErrStockNotFound):
+			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		default:
+			return nil, status.Error(codes.Internal, err.Error())
+		}
 	}
 
 	return &loms.OrderCreateResponse{OrderId: id}, nil

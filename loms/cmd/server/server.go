@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -48,8 +49,9 @@ func main() {
 	}
 
 	ctx := context.Background()
+	config := GetConfig(cliFlags)
 
-	exporter, err := otlptracehttp.New(ctx, otlptracehttp.WithEndpointURL("http://jaeger:4318"))
+	exporter, err := otlptracehttp.New(ctx, otlptracehttp.WithEndpointURL(config.jaegerURL))
 	if err != nil {
 		logger.Panicw(ctx, "otel exporter error", "error", err.Error())
 	}
@@ -93,10 +95,9 @@ func main() {
 
 	dbConn, err := pgx.Connect(ctx, dbConnStr)
 	if err != nil {
-		logger.Panicw(ctx, fmt.Sprintf("Couldn't connect to DB! Check connection string: %s", dbConnStr), "error", err)
+		logger.Panicw(ctx, "Couldn't connect to DB! Check connection string", "error", err)
 	}
 
-	config := GetConfig(cliFlags)
 	kafkaProducer, err := producer.NewSyncProducer(config.kafka)
 	if err != nil {
 		logger.Panicw(ctx, "Couldn't create kafka producer", "error", err)
@@ -112,36 +113,38 @@ func main() {
 
 	desc.RegisterLomsServer(grpcServer, controller)
 
-	logger.Infow(ctx, fmt.Sprintf("server listening at %v", lis.Addr()))
+	logger.Infow(ctx, "grpc server listening", "addr", lis.Addr().String())
 
 	// grpcServer.Serve блокирующий, поэтому создаем в отдельной рутине
 	go func() {
-		if err = grpcServer.Serve(lis); err != nil {
+		if err := grpcServer.Serve(lis); err != nil {
 			logger.Fatalw(ctx, "failed to serve gRPC", "error", err)
 		}
 	}()
 
-	conn, err := grpc.NewClient(":50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(fmt.Sprintf(":%d", grpcPort), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		logger.Fatalw(ctx, "failed to create client", "error", err)
 	}
+	defer conn.Close()
 
 	gwmux := runtime.NewServeMux()
 	RegisterPprof(gwmux)
 
-	if err = desc.RegisterLomsHandler(context.Background(), gwmux, conn); err != nil {
+	if err = desc.RegisterLomsHandler(ctx, gwmux, conn); err != nil {
 		logger.Fatalw(ctx, "failed to register gateway", "error", err)
 	}
 
 	gwServer := &http.Server{
-		Addr:    fmt.Sprintf(":%d", httpPort),
-		Handler: middleware.WithHTTPLoggingMiddleware(gwmux),
+		Addr:              fmt.Sprintf(":%d", httpPort),
+		Handler:           middleware.WithHTTPLoggingMiddleware(gwmux),
+		ReadHeaderTimeout: time.Minute,
 	}
 
-	logger.Infow(ctx, fmt.Sprintf("Serving gRPC-Gateway on %s\n", gwServer.Addr))
+	logger.Infow(ctx, "serving gRPC-Gateway", "addr", gwServer.Addr)
 
 	go func() {
-		if err = gwServer.ListenAndServe(); err != nil {
+		if err := gwServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Fatalw(ctx, "failed to serve gRPC-Gateway", "error", err)
 		}
 	}()
@@ -150,22 +153,23 @@ func main() {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	sig := <-sigChan
-	logger.Infow(ctx, fmt.Sprintf("Received signal \"%v\", shutting down...", sig))
+	logger.Infow(ctx, "received signal, shutting down", "signal", sig.String())
 
-	timeCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
+	if err := gwServer.Shutdown(shutdownCtx); err != nil {
+		logger.Fatalw(ctx, "failed to gracefully shutdown gateway server", "error", err)
+	}
 
 	grpcServer.GracefulStop()
 
-	if err := gwServer.Shutdown(timeCtx); err != nil {
-		logger.Fatalw(ctx, "failed to gracefully shutdown server", "error", err)
-	}
-
-	if err := dbConn.Close(timeCtx); err != nil {
+	if err := dbConn.Close(shutdownCtx); err != nil {
 		logger.Fatalw(ctx, "failed to close DB connection", "error", err)
 	}
 }
 
+// RegisterPprof registers pprof handlers on the gRPC-Gateway mux.
 func RegisterPprof(mux *runtime.ServeMux) {
 	mux.HandlePath(
 		"GET",

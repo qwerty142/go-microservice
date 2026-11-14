@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"slices"
 	"sync"
 
 	"route256/cart/internal/pkg/carts/entity"
@@ -28,42 +29,35 @@ func (repo *InMemoryCartRepository) AddItem(userID, skuID int64, count uint16) e
 	repo.mutex.Lock()
 	defer repo.mutex.Unlock()
 
-	if _, exists := repo.storage[userID]; !exists {
-		repo.storage[userID] = make([]entity.Item, 0)
-	}
-
-	found := false
-	for i := 0; i < len(repo.storage[userID]) && !found; i++ {
-		if repo.storage[userID][i].SkuID == skuID {
-			repo.storage[userID][i].Count += count
-			found = true
+	items := repo.storage[userID]
+	for i := range items {
+		if items[i].SkuID == skuID {
+			items[i].Count += count
+			repo.updateElementsMetric()
+			return nil
 		}
 	}
 
-	if !found {
-		repo.storage[userID] = append(repo.storage[userID], entity.Item{SkuID: skuID, Count: count})
-	}
-
-	metrics.InMemoryElementsTotal.Set(float64(len(repo.storage)))
+	repo.storage[userID] = append(items, entity.Item{SkuID: skuID, Count: count})
+	repo.updateElementsMetric()
 
 	return nil
 }
 
 // RemoveItem removes an item from the user's cart.
-func (repo *InMemoryCartRepository) RemoveItem(userID, sku int64) error {
+func (repo *InMemoryCartRepository) RemoveItem(userID, skuID int64) error {
 	repo.mutex.Lock()
 	defer repo.mutex.Unlock()
 
-	if items, ok := repo.storage[userID]; ok {
-		for i, item := range items {
-			if item.SkuID == sku {
-				repo.storage[userID] = append(items[:i], items[i+1:]...)
-				break
-			}
-		}
+	items, ok := repo.storage[userID]
+	if !ok {
+		return nil
 	}
 
-	metrics.InMemoryElementsTotal.Set(float64(len(repo.storage)))
+	repo.storage[userID] = slices.DeleteFunc(items, func(item entity.Item) bool {
+		return item.SkuID == skuID
+	})
+	repo.updateElementsMetric()
 
 	return nil
 }
@@ -74,20 +68,22 @@ func (repo *InMemoryCartRepository) ClearCart(userID int64) error {
 	defer repo.mutex.Unlock()
 
 	delete(repo.storage, userID)
-
-	metrics.InMemoryElementsTotal.Set(float64(len(repo.storage)))
+	repo.updateElementsMetric()
 
 	return nil
 }
 
-// GetCart retrieves the user's cart.
+// GetCart retrieves a copy of the user's cart, so the caller cannot mutate internal state.
 func (repo *InMemoryCartRepository) GetCart(userID int64) (*entity.Cart, error) {
 	repo.mutex.RLock()
 	defer repo.mutex.RUnlock()
 
-	cart := entity.Cart{}
-	cart.UserID = userID
-	cart.Items = repo.storage[userID]
+	return &entity.Cart{
+		UserID: userID,
+		Items:  slices.Clone(repo.storage[userID]),
+	}, nil
+}
 
-	return &cart, nil
+func (repo *InMemoryCartRepository) updateElementsMetric() {
+	metrics.InMemoryElementsTotal.Set(float64(len(repo.storage)))
 }

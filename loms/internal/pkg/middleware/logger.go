@@ -10,29 +10,35 @@ import (
 	"route256/loms/internal/pkg/util/logger"
 )
 
+// Logger logs the incoming request and the outgoing response or error.
 func Logger(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
-	// для превращения protbuf структур в json используем google.golang.org/protobuf/encoding/protojson пакет а не encoding/json
-	raw, _ := protojson.Marshal((req).(proto.Message))
-	logger.Infow(ctx, "request log", "method", info.FullMethod, "req", string(raw))
+	// protobuf structures are marshaled with protojson, not encoding/json
+	if msg, ok := req.(proto.Message); ok {
+		if raw, marshalErr := protojson.Marshal(msg); marshalErr == nil {
+			logger.Infow(ctx, "request log", "method", info.FullMethod, "req", string(raw))
+		}
+	}
 
 	if resp, err = handler(ctx, req); err != nil {
 		logger.Infow(ctx, "response log", "method", info.FullMethod, "err", err)
 		return
 	}
 
-	rawResp, _ := protojson.Marshal((resp).(proto.Message))
-
-	// Пример академический
-	// Логировать все нельзя, в объекте могут быть чувствительные к безопасности данные (персональные)
-	// Также сами объекты для логирования могут быть очень большими
-	logger.Infow(ctx, "response log", "method", info.FullMethod, "resp", string(rawResp))
+	// Academic example: logging everything is unsafe (personal data)
+	// and the objects themselves may be very large.
+	if msg, ok := resp.(proto.Message); ok {
+		if raw, marshalErr := protojson.Marshal(msg); marshalErr == nil {
+			logger.Infow(ctx, "response log", "method", info.FullMethod, "resp", string(raw))
+		}
+	}
 
 	return resp, err
 }
 
+// WithHTTPLoggingMiddleware logs incoming HTTP requests.
 func WithHTTPLoggingMiddleware(next http.Handler) http.Handler {
 	fn := func(w http.ResponseWriter, r *http.Request) {
-		logger.Infow(context.Background(), "logging middleware", "method", r.Method)
+		logger.Infow(r.Context(), "logging middleware", "method", r.Method)
 		next.ServeHTTP(w, r)
 	}
 

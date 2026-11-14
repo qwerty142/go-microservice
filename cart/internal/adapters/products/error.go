@@ -15,6 +15,11 @@ func (r *RequestError) Error() string {
 	return r.Err.Error()
 }
 
+// Unwrap returns the underlying error, so RequestError participates in errors.Is/errors.As chains.
+func (r *RequestError) Unwrap() error {
+	return r.Err
+}
+
 // NotFound checks if this error had status code 404 Not Found.
 func (r *RequestError) NotFound() bool {
 	return r.StatusCode == http.StatusNotFound

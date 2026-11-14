@@ -24,12 +24,18 @@ func parseInt64(str string) (int64, error) {
 	return value, nil
 }
 
-func setInternalServerError(writer http.ResponseWriter, message string) {
-	writer.WriteHeader(http.StatusInternalServerError)
+func writeError(ctx context.Context, writer http.ResponseWriter, status int, message string) {
+	writer.WriteHeader(status)
 
-	_, err := writer.Write([]byte(message))
-	if err != nil {
-		logger.Errorw(context.TODO(), "Writer error", "error", err)
-		return
+	if _, err := writer.Write([]byte(message)); err != nil {
+		logger.Errorw(ctx, "Writer error", "error", err)
 	}
+}
+
+func setInternalServerError(ctx context.Context, writer http.ResponseWriter, message string) {
+	writeError(ctx, writer, http.StatusInternalServerError, message)
+}
+
+func setBadRequestError(ctx context.Context, writer http.ResponseWriter, message string) {
+	writeError(ctx, writer, http.StatusBadRequest, message)
 }

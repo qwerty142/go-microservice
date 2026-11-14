@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -13,6 +14,7 @@ import (
 	"route256/loms/pkg/api/loms/v1"
 )
 
+// OrderInfo handles retrieving order info.
 func (server *LomsServer) OrderInfo(ctx context.Context, req *loms.OrderInfoRequest) (resp *loms.OrderInfoResponse, err error) {
 	defer func(startTime time.Time) {
 		metrics.SaveRequestDuration(startTime, "/order/info", err)
@@ -24,7 +26,11 @@ func (server *LomsServer) OrderInfo(ctx context.Context, req *loms.OrderInfoRequ
 
 	order, err := server.impl.GetOrderInfo(ctx, req.OrderId)
 	if err != nil {
-		return nil, status.Errorf(codes.NotFound, err.Error())
+		if errors.Is(err, model.ErrOrderNotFound) {
+			return nil, status.Error(codes.NotFound, err.Error())
+		}
+
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 
 	return repackOrderToInfoResponse(order), nil

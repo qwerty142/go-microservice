@@ -29,19 +29,21 @@ var (
 	)
 )
 
-func SaveRequestDuration(startTime time.Time, handler string, error error) {
+// SaveRequestDuration records the grpc request duration labeled with the returned status code.
+func SaveRequestDuration(startTime time.Time, handler string, err error) {
 	statusCodeInt := 0
-	if error != nil {
-		statusCode, _ := status.FromError(error)
+	if err != nil {
+		statusCode, _ := status.FromError(err)
 		statusCodeInt = int(statusCode.Code())
 	}
 	requestDurationSecondsHistogram.WithLabelValues(handler, strconv.Itoa(statusCodeInt)).Observe(time.Since(startTime).Seconds())
 }
 
-func SaveDatabaseRequestDuration(startTime time.Time, error error, operation string) {
+// SaveDatabaseRequestDuration records the database request duration labeled with the error and operation.
+func SaveDatabaseRequestDuration(startTime time.Time, err error, operation string) {
 	var errorMessage string
-	if error != nil {
-		errorMessage = error.Error()
+	if err != nil {
+		errorMessage = err.Error()
 	}
 
 	databaseRequestDurationSecondsHistogram.WithLabelValues(errorMessage, operation).Observe(time.Since(startTime).Seconds())

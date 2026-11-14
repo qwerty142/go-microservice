@@ -9,13 +9,14 @@ import (
 	"route256/loms/internal/pkg/util/logger"
 )
 
+// Panic converts a handler panic into an Internal grpc error.
 func Panic(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
 	defer func() {
 		if e := recover(); e != nil {
-			logger.Infow(ctx, "panic recovery", "error", e)
+			logger.Errorw(ctx, "panic recovery", "error", e)
 			err = status.Errorf(codes.Internal, "panic: %v", e)
 		}
 	}()
-	resp, err = handler(ctx, req)
-	return resp, err
+
+	return handler(ctx, req)
 }

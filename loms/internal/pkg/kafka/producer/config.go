@@ -1,12 +1,14 @@
 package producer
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/IBM/sarama"
 )
 
-func PrepareConfig(opts ...Option) *sarama.Config {
+// PrepareConfig builds the base sarama config for a sync producer and applies the given options.
+func PrepareConfig(opts ...Option) (*sarama.Config, error) {
 	c := sarama.NewConfig()
 
 	c.Producer.Partitioner = sarama.NewHashPartitioner
@@ -25,8 +27,10 @@ func PrepareConfig(opts ...Option) *sarama.Config {
 	c.Producer.Return.Errors = true
 
 	for _, opt := range opts {
-		_ = opt.Apply(c)
+		if err := opt.Apply(c); err != nil {
+			return nil, fmt.Errorf("apply option: %w", err)
+		}
 	}
 
-	return c
+	return c, nil
 }

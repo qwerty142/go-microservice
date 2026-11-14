@@ -1,6 +1,7 @@
 package util
 
 import (
+	"context"
 	"math"
 	"sync"
 	"time"
@@ -51,9 +52,19 @@ func (rl *RateLimiter) Allow() bool {
 	return false
 }
 
-// Wait blocks the execution until RateLimiter allows to continue.
-func (rl *RateLimiter) Wait() {
-	for !rl.Allow() {
-		time.Sleep(rl.interval)
+// Wait blocks the execution until RateLimiter allows to continue or ctx is done.
+func (rl *RateLimiter) Wait(ctx context.Context) error {
+	for {
+		if rl.Allow() {
+			return nil
+		}
+
+		timer := time.NewTimer(rl.interval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
 	}
 }

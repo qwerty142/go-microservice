@@ -29,18 +29,16 @@ func (s *CartServer) RemoveCartItem(writerOrigin http.ResponseWriter, request *h
 
 	writer.Header().Set("Content-Type", "application/json")
 
-	var parseErr error = nil
+	var parseErr error
 	requestData := &removeItemRequest{}
 
-	requestData.UserID, parseErr = parseInt64(request.PathValue("user_id"))
-	if parseErr != nil {
-		setInternalServerError(writer, "Parse query error")
+	if requestData.UserID, parseErr = parseInt64(request.PathValue("user_id")); parseErr != nil {
+		setBadRequestError(ctx, writer, "Parse query error")
 		return
 	}
 
-	requestData.SkuID, parseErr = parseInt64(request.PathValue("sku_id"))
-	if parseErr != nil {
-		setInternalServerError(writer, "Parse query error")
+	if requestData.SkuID, parseErr = parseInt64(request.PathValue("sku_id")); parseErr != nil {
+		setBadRequestError(ctx, writer, "Parse query error")
 		return
 	}
 
@@ -50,9 +48,8 @@ func (s *CartServer) RemoveCartItem(writerOrigin http.ResponseWriter, request *h
 		return
 	}
 
-	serviceErr := s.cartService.RemoveItemFromCart(ctx, requestData.UserID, requestData.SkuID)
-	if serviceErr != nil {
-		setInternalServerError(writer, "Service error")
+	if serviceErr := s.cartService.RemoveItemFromCart(ctx, requestData.UserID, requestData.SkuID); serviceErr != nil {
+		setInternalServerError(ctx, writer, "Service error")
 		return
 	}
 
